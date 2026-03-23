@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your Trip Plan — TripMind AI</title>
+    <meta name="description" content="Your personalised AI-generated trip itinerary." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+
+<body>
+
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+
+    <!-- Header -->
+    <header class="site-header">
+        <div class="logo">
+            <span class="logo-icon">✈</span>
+            <span class="logo-text">TripMind <sup class="badge">AI</sup></span>
+        </div>
+        <a href="/" class="btn-outline">← Plan Another Trip</a>
+    </header>
+
+    <!-- Hero banner -->
+    <section class="result-hero">
+        <p class="hero-kicker">🤖 Agent Pipeline Complete</p>
+        <h1 class="hero-title">Your Trip to <span class="gradient-text">{{ trip.destination }}</span></h1>
+        <p class="hero-sub">{{ trip.days }} day{{ 's' if trip.days > 1 else '' }} · {{ trip.places|length }} places ·
+            Budget {{ trip.budget_status }}</p>
+    </section>
+
+    <main class="container result-grid">
+
+        <!-- ── Overview card ──────────────────────────────────────── -->
+        <div class="card overview-card">
+            <h2 class="card-title">📋 Trip Overview</h2>
+            <div class="overview-items">
+                <div class="ov-item">
+                    <span class="ov-icon">📍</span>
+                    <div>
+                        <p class="ov-label">Destination</p>
+                        <p class="ov-value">{{ trip.destination }}</p>
+                    </div>
+                </div>
+                <div class="ov-item">
+                    <span class="ov-icon">🗓</span>
+                    <div>
+                        <p class="ov-label">Duration</p>
+                        <p class="ov-value">{{ trip.days }} day{{ 's' if trip.days > 1 else '' }}</p>
+                    </div>
+                </div>
+                <div class="ov-item">
+                    <span class="ov-icon">💰</span>
+                    <div>
+                        <p class="ov-label">Your Budget</p>
+                        <p class="ov-value">₹{{ "{:,}".format(trip.budget) }}</p>
+                    </div>
+                </div>
+                <div class="ov-item">
+                    <span class="ov-icon">🎯</span>
+                    <div>
+                        <p class="ov-label">Preferences</p>
+                        <p class="ov-value">{{ trip.preferences | join(', ') if trip.preferences else 'None' }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Recommended Places ─────────────────────────────────── -->
+        <div class="card places-card">
+            <h2 class="card-title">🗺 Recommended Places</h2>
+            <ul class="places-list">
+                {% for place in trip.places %}
+                <li class="place-item">
+                    <span class="place-num">{{ loop.index }}</span>
+                    <span class="place-name">{{ place }}</span>
+                    <span class="place-pin">📌</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- ── Itinerary ───────────────────────────────────────────── -->
+        <div class="card itinerary-card">
+            <h2 class="card-title">📅 Day-Wise Itinerary</h2>
+            <div class="itinerary-timeline">
+                {% for entry in trip.itinerary %}
+                <div class="day-block">
+                    <div class="day-badge">{{ entry.label }}</div>
+                    <div class="day-places">
+                        {% for place in entry.places %}
+                        <div class="day-place">
+                            <span class="day-dot"></span>
+                            <span>{{ place }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- ── Budget Summary ─────────────────────────────────────── -->
+        <div
+            class="card budget-card {% if trip.budget_status == 'Within Budget' %}budget-ok{% else %}budget-over{% endif %}">
+            <h2 class="card-title">💳 Budget Summary</h2>
+
+            <div class="budget-bar-wrap">
+                {% set pct = [(trip.total_cost / trip.budget * 100)|round|int, 100]|min %}
+                <div class="budget-bar">
+                    <div class="budget-fill" style="width: {{ pct }}%"></div>
+                </div>
+                <div class="budget-bar-labels">
+                    <span>₹0</span>
+                    <span>₹{{ "{:,}".format(trip.budget) }}</span>
+                </div>
+            </div>
+
+            <div class="budget-rows">
+                <div class="brow">
+                    <span>Avg Cost / Day</span>
+                    <strong>₹{{ "{:,}".format(trip.avg_cost_per_day) }}</strong>
+                </div>
+                <div class="brow">
+                    <span>× {{ trip.days }} day{{ 's' if trip.days > 1 else '' }}</span>
+                    <strong>=</strong>
+                </div>
+                <div class="brow brow-total">
+                    <span>Estimated Total</span>
+                    <strong>₹{{ "{:,}".format(trip.total_cost) }}</strong>
+                </div>
+                <div class="brow">
+                    <span>Your Budget</span>
+                    <strong>₹{{ "{:,}".format(trip.budget) }}</strong>
+                </div>
+                <div class="brow brow-diff">
+                    <span>{{ 'Savings' if trip.surplus >= 0 else 'Shortfall' }}</span>
+                    <strong class="{{ 'text-green' if trip.surplus >= 0 else 'text-red' }}">
+                        {{ trip.surplus_label }}
+                    </strong>
+                </div>
+            </div>
+
+            <div
+                class="budget-status-badge {% if trip.budget_status == 'Within Budget' %}status-ok{% else %}status-over{% endif %}">
+                {{ '✅' if trip.budget_status == 'Within Budget' else '⚠️' }}
+                {{ trip.budget_status }}
+            </div>
+
+            {% if trip.budget_tip %}
+            <div class="budget-tip"
+                style="margin-top: 15px; padding: 12px; font-size: 0.85rem; background: rgba(108,99,255,0.1); border-left: 3px solid var(--accent); border-radius: 4px; color: var(--text);">
+                💡 <strong>AI Tip:</strong> {{ trip.budget_tip }}
+            </div>
+            {% endif %}
+        </div>
+
+    </main>
+
+    <!-- ── Agent pipeline run trace ───────────────────────────── -->
+    <section class="container pipeline-trace">
+        <h2 class="section-title">🤖 Agent Pipeline Execution</h2>
+        <div class="trace-steps">
+            {% for step in [
+            ("01", "UserAgent", "👤", "Validated inputs & populated shared memory"),
+            ("02", "RecommendationAgent", "🗺", "Fetched & filtered places from dataset"),
+            ("03", "PlannerAgent", "📅", "Distributed places across " ~ trip.days ~ " day(s)"),
+            ("04", "BudgetAgent", "💰", "Computed ₹" ~ "{:,}".format(trip.total_cost) ~ " — " ~ trip.budget_status),
+            ] %}
+            <div class="trace-step fade-in" style="animation-delay: {{ loop.index0 * 0.15 }}s">
+                <div class="trace-num">{{ step[0] }}</div>
+                <div class="trace-icon">{{ step[2] }}</div>
+                <div class="trace-info">
+                    <p class="trace-name">{{ step[1] }}</p>
+                    <p class="trace-desc">{{ step[3] }}</p>
+                </div>
+                <div class="trace-check">✓</div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <div class="container cta-row">
+        <a href="/" class="btn-primary">🔄 Plan Another Trip</a>
+    </div>
+
+    <footer class="site-footer">
+        <p>🤖 Powered by a class-based Python multi-agent system &nbsp;·&nbsp; Built with Flask</p>
+    </footer>
+
+</body>
+
+</html>

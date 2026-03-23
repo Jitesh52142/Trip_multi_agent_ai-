@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multi-Agent Trip Planner</title>
+  <meta name="description" content="AI-powered multi-agent trip planning system — get a smart day-wise itinerary in seconds." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+
+  <!-- ── Background blobs ───────────────────────────────────── -->
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="logo">
+      <span class="logo-icon">✈</span>
+      <span class="logo-text">TripMind <sup class="badge">AI</sup></span>
+    </div>
+    <nav class="nav-links">
+      <a href="#how-it-works">How it works</a>
+      <a href="#destinations">Destinations</a>
+    </nav>
+  </header>
+
+  <!-- ── Hero ───────────────────────────────────────────────── -->
+  <section class="hero">
+    <p class="hero-kicker">🤖 Multi-Agent AI System</p>
+    <h1 class="hero-title">Plan Your Dream Trip<br /><span class="gradient-text">in Seconds</span></h1>
+    <p class="hero-sub">Four intelligent agents work together — recommending places, crafting itineraries, and validating your budget.</p>
+  </section>
+
+  <!-- ── Errors ─────────────────────────────────────────────── -->
+  {% if errors %}
+  <div class="container">
+    <div class="error-box">
+      <span class="error-icon">⚠️</span>
+      <ul>
+        {% for err in errors %}<li>{{ err }}</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Planning Form ──────────────────────────────────────── -->
+  <main class="container" id="planner">
+    <div class="card form-card">
+      <div class="card-header">
+        <h2>🗺 Plan My Trip</h2>
+        <p>Fill in your details and watch the agents work.</p>
+      </div>
+
+      <form method="POST" action="/plan" class="trip-form" id="tripForm">
+
+        <!-- Destination -->
+        <div class="form-group">
+          <label for="destination">📍 Destination</label>
+          <div class="select-wrapper">
+            <select name="destination" id="destination" required>
+              <option value="" disabled {% if not prev %}selected{% endif %}>Choose your destination…</option>
+              {% for dest in destinations %}
+              <option value="{{ dest }}" {% if prev and prev.destination == dest %}selected{% endif %}>{{ dest }}</option>
+              {% endfor %}
+            </select>
+            <span class="select-icon">▾</span>
+          </div>
+        </div>
+
+        <!-- Budget + Days side-by-side -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="budget">💰 Budget (₹ INR)</label>
+            <div class="input-wrapper">
+              <span class="input-prefix">₹</span>
+              <input type="number" id="budget" name="budget" min="1" placeholder="e.g. 12000"
+                     value="{{ prev.budget if prev else '' }}" required />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="days">🗓 Duration (days)</label>
+            <div class="input-wrapper">
+              <input type="number" id="days" name="days" min="1" max="30" placeholder="e.g. 3"
+                     value="{{ prev.days if prev else '' }}" required />
+              <span class="input-suffix">days</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preferences -->
+        <div class="form-group">
+          <label for="preferences">🎯 Preferences <span class="label-hint">(optional)</span></label>
+          <input type="text" id="preferences" name="preferences" placeholder="e.g. beach, fort, nature, adventure"
+                 value="{{ prev.preferences if prev else '' }}" />
+          <p class="field-hint">Comma-separated keywords to filter recommended places.</p>
+        </div>
+
+        <!-- Preference chips quick-select -->
+        <div class="chips-row" id="chipsRow">
+          <span class="chip-label">Quick add:</span>
+          {% for chip in ["beach","fort","temple","nature","adventure","hills","wildlife","heritage"] %}
+          <button type="button" class="chip" data-value="{{ chip }}">{{ chip }}</button>
+          {% endfor %}
+        </div>
+
+        <button type="submit" class="btn-primary" id="submitBtn">
+          <span class="btn-text">🚀 Generate My Trip Plan</span>
+          <span class="btn-loader hidden" id="btnLoader">⏳ Planning…</span>
+        </button>
+      </form>
+    </div>
+  </main>
+
+  <!-- ── How it works ───────────────────────────────────────── -->
+  <section class="how-section" id="how-it-works">
+    <div class="container">
+      <h2 class="section-title">How the Agent Pipeline Works</h2>
+      <div class="pipeline-row">
+        <div class="pipeline-step">
+          <div class="step-icon">👤</div>
+          <div class="step-num">01</div>
+          <h3>User Agent</h3>
+          <p>Validates your destination, budget, duration and preferences.</p>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="step-icon">🗺</div>
+          <div class="step-num">02</div>
+          <h3>Recommendation Agent</h3>
+          <p>Fetches and filters top places matching your preferences.</p>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="step-icon">📅</div>
+          <div class="step-num">03</div>
+          <h3>Planner Agent</h3>
+          <p>Distributes places across days into a balanced itinerary.</p>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="step-icon">💰</div>
+          <div class="step-num">04</div>
+          <h3>Budget Agent</h3>
+          <p>Calculates total cost and validates against your budget.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Destinations showcase ──────────────────────────────── -->
+  <section class="dest-section" id="destinations">
+    <div class="container">
+      <h2 class="section-title">Supported Destinations</h2>
+      <div class="dest-grid">
+        {% set dest_meta = {
+          "Goa":     {"emoji": "🏖",  "tags": ["Beach","Nightlife","History"],   "cost": "₹3,000/day"},
+          "Manali":  {"emoji": "🏔",  "tags": ["Mountains","Adventure","Snow"],  "cost": "₹2,500/day"},
+          "Jaipur":  {"emoji": "🏯",  "tags": ["Heritage","Forts","Culture"],   "cost": "₹2,000/day"},
+          "Kerala":  {"emoji": "🌴",  "tags": ["Backwaters","Nature","Wildlife"],"cost": "₹3,500/day"},
+          "Ladakh":  {"emoji": "🦅",  "tags": ["High Altitude","Lakes","Bikes"],"cost": "₹4,000/day"}
+        } %}
+        {% for dest in destinations %}
+        {% set meta = dest_meta.get(dest, {"emoji": "🌍", "tags": [], "cost": ""}) %}
+        <div class="dest-card" onclick="selectDestination('{{ dest }}')">
+          <div class="dest-emoji">{{ meta.emoji }}</div>
+          <h3>{{ dest }}</h3>
+          <p class="dest-cost">{{ meta.cost }}</p>
+          <div class="dest-tags">
+            {% for tag in meta.tags %}<span class="dest-tag">{{ tag }}</span>{% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <p>🤖 Powered by a class-based Python multi-agent system &nbsp;·&nbsp; Built with Flask</p>
+  </footer>
+
+  <script>
+    // ── Preference chips ────────────────────────────────────────
+    document.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const prefInput = document.getElementById('preferences');
+        const val = chip.dataset.value;
+        const current = prefInput.value.split(',').map(s => s.trim()).filter(Boolean);
+        if (!current.includes(val)) {
+          current.push(val);
+          prefInput.value = current.join(', ');
+          chip.classList.add('chip-active');
+        } else {
+          const updated = current.filter(v => v !== val);
+          prefInput.value = updated.join(', ');
+          chip.classList.remove('chip-active');
+        }
+      });
+    });
+
+    // ── Destination card click → select in dropdown ─────────────
+    function selectDestination(name) {
+      const sel = document.getElementById('destination');
+      sel.value = name;
+      document.getElementById('planner').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ── Submit button loading state ─────────────────────────────
+    document.getElementById('tripForm').addEventListener('submit', () => {
+      document.querySelector('.btn-text').classList.add('hidden');
+      document.getElementById('btnLoader').classList.remove('hidden');
+      document.getElementById('submitBtn').disabled = true;
+    });
+  </script>
+</body>
+</html>

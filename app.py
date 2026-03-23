@@ -1,0 +1,143 @@
+"""
+app.py
+------
+Flask web server for the Multi-Agent Trip Planner.
+
+Routes
+------
+GET  /          → Landing page with the trip form
+POST /plan      → Run the agent pipeline, redirect to results
+GET  /result    → Display the structured trip plan
+GET  /api/destinations  → JSON list of supported destinations
+"""
+
+import os
+import json
+import sys
+import warnings
+
+# Suppress Pydantic and LangChain deprecation warnings
+warnings.filterwarnings("ignore")
+
+# Ensure project root is importable
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from trip_planner_system import TripPlannerSystem
+from tools import RecommendationTool
+
+app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "trip-planner-secret-2026")
+
+# One shared system instance (stateless between requests — SharedMemory is reset each call)
+_system = TripPlannerSystem()
+_rec_tool = RecommendationTool()
+
+
+# --------------------------------------------------------------------
+# Landing / form page
+# --------------------------------------------------------------------
+
+@app.route("/")
+def index():
+    """Render the trip planning form."""
+    destinations = _rec_tool.get_supported_destinations()
+    return render_template("index.html", destinations=destinations)
+
+
+# --------------------------------------------------------------------
+# Plan submission
+# --------------------------------------------------------------------
+
+@app.route("/plan", methods=["POST"])
+def plan():
+    """Collect form data, run the agent pipeline, store result in session."""
+    destination  = request.form.get("destination", "").strip()
+    budget_raw   = request.form.get("budget", "0").strip()
+    days_raw     = request.form.get("days", "0").strip()
+    prefs_raw    = request.form.get("preferences", "").strip()
+
+    # Basic server-side validation
+    errors = []
+    try:
+        budget = int(budget_raw)
+        if budget <= 0:
+            errors.append("Budget must be a positive number.")
+    except ValueError:
+        budget = 0
+        errors.append("Budget must be a whole number.")
+
+    try:
+        days = int(days_raw)
+        if days <= 0:
+            errors.append("Duration must be at least 1 day.")
+    except ValueError:
+        days = 0
+        errors.append("Duration must be a whole number.")
+
+    if not destination:
+        errors.append("Please select a destination.")
+
+    if errors:
+        destinations = _rec_tool.get_supported_destinations()
+        return render_template("index.html", destinations=destinations, errors=errors,
+                               prev={"destination": destination, "budget": budget_raw,
+                                     "days": days_raw, "preferences": prefs_raw})
+
+    preferences = [p.strip() for p in prefs_raw.split(",") if p.strip()] if prefs_raw else []
+
+    # Run the agent pipeline
+    result = _system.run_with_data(
+        destination=destination,
+        budget=budget,
+        days=days,
+        preferences=preferences,
+    )
+
+    if not result.get("success"):
+        destinations = _rec_tool.get_supported_destinations()
+        return render_template("index.html", destinations=destinations,
+                               errors=[result.get("error", "An unknown error occurred.")],
+                               prev={"destination": destination, "budget": budget_raw,
+                                     "days": days_raw, "preferences": prefs_raw})
+
+    # Store in session for the result page
+    session["trip_result"] = result
+    return redirect(url_for("result"))
+
+
+# --------------------------------------------------------------------
+# Results page
+# --------------------------------------------------------------------
+
+@app.route("/result")
+def result():
+    """Display the trip plan result."""
+    trip = session.get("trip_result")
+    if not trip:
+        return redirect(url_for("index"))
+    return render_template("result.html", trip=trip)
+
+
+# --------------------------------------------------------------------
+# API – destinations list (for dynamic UI / future use)
+# --------------------------------------------------------------------
+
+@app.route("/api/destinations")
+def api_destinations():
+    """Return supported destinations as JSON."""
+    return jsonify({
+        "destinations": _rec_tool.get_supported_destinations()
+    })
+
+
+# --------------------------------------------------------------------
+# Run
+# --------------------------------------------------------------------
+
+if __name__ == "__main__":
+    app.run(debug=bool(os.getenv("FLASK_DEBUG", "1")), port=5000)
