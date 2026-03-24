@@ -1,0 +1,10 @@
+.venv/
+.venv312/
+venv/
+__pycache__/
+*.pyc
+tests/
+test_*.py
+data/
+agents/
+.git/
