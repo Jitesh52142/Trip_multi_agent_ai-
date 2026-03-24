@@ -46,15 +46,6 @@ def _get_system():
     return _system
 
 
-def _get_rec_tool():
-    """Return (and lazily create) the RecommendationTool singleton."""
-    global _rec_tool
-    if _rec_tool is None:
-        from tools import RecommendationTool
-        _rec_tool = RecommendationTool()
-    return _rec_tool
-
-
 # --------------------------------------------------------------------
 # Landing / form page
 # --------------------------------------------------------------------
@@ -62,8 +53,7 @@ def _get_rec_tool():
 @app.route("/")
 def index():
     """Render the trip planning form."""
-    destinations = _get_rec_tool().get_supported_destinations()
-    return render_template("index.html", destinations=destinations)
+    return render_template("index.html")
 
 
 # --------------------------------------------------------------------
@@ -102,9 +92,8 @@ def plan():
         errors.append("Please select a destination.")
 
     if errors:
-        destinations = _get_rec_tool().get_supported_destinations()
         return render_template(
-            "index.html", destinations=destinations, errors=errors,
+            "index.html", errors=errors,
             prev={"destination": destination, "budget": budget_raw,
                   "days": days_raw, "preferences": prefs_raw}
         )
@@ -120,18 +109,16 @@ def plan():
             preferences=preferences,
         )
     except Exception as exc:
-        destinations = _get_rec_tool().get_supported_destinations()
         return render_template(
-            "index.html", destinations=destinations,
+            "index.html",
             errors=[f"Internal error: {exc}"],
             prev={"destination": destination, "budget": budget_raw,
                   "days": days_raw, "preferences": prefs_raw}
         )
 
     if not result.get("success"):
-        destinations = _get_rec_tool().get_supported_destinations()
         return render_template(
-            "index.html", destinations=destinations,
+            "index.html",
             errors=[result.get("error", "An unknown error occurred.")],
             prev={"destination": destination, "budget": budget_raw,
                   "days": days_raw, "preferences": prefs_raw}
@@ -162,7 +149,7 @@ def result():
 def api_destinations():
     """Return supported destinations as JSON."""
     return jsonify({
-        "destinations": _get_rec_tool().get_supported_destinations()
+        "destinations": [] # Dynamic input now supported
     })
 
 

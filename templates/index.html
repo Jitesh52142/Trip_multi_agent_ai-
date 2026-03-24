@@ -24,7 +24,6 @@
     </div>
     <nav class="nav-links">
       <a href="#how-it-works">How it works</a>
-      <a href="#destinations">Destinations</a>
     </nav>
   </header>
 
@@ -59,15 +58,10 @@
 
         <!-- Destination -->
         <div class="form-group">
-          <label for="destination">📍 Destination</label>
-          <div class="select-wrapper">
-            <select name="destination" id="destination" required>
-              <option value="" disabled {% if not prev %}selected{% endif %}>Choose your destination…</option>
-              {% for dest in destinations %}
-              <option value="{{ dest }}" {% if prev and prev.destination == dest %}selected{% endif %}>{{ dest }}</option>
-              {% endfor %}
-            </select>
-            <span class="select-icon">▾</span>
+          <label for="destination">📍 Destination City</label>
+          <div class="input-wrapper">
+            <input type="text" id="destination" name="destination" placeholder="e.g. Goa, Paris, Tokyo"
+                   value="{{ prev.destination if prev else '' }}" required />
           </div>
         </div>
 
@@ -152,32 +146,7 @@
     </div>
   </section>
 
-  <!-- ── Destinations showcase ──────────────────────────────── -->
-  <section class="dest-section" id="destinations">
-    <div class="container">
-      <h2 class="section-title">Supported Destinations</h2>
-      <div class="dest-grid">
-        {% set dest_meta = {
-          "Goa":     {"emoji": "🏖",  "tags": ["Beach","Nightlife","History"],   "cost": "₹3,000/day"},
-          "Manali":  {"emoji": "🏔",  "tags": ["Mountains","Adventure","Snow"],  "cost": "₹2,500/day"},
-          "Jaipur":  {"emoji": "🏯",  "tags": ["Heritage","Forts","Culture"],   "cost": "₹2,000/day"},
-          "Kerala":  {"emoji": "🌴",  "tags": ["Backwaters","Nature","Wildlife"],"cost": "₹3,500/day"},
-          "Ladakh":  {"emoji": "🦅",  "tags": ["High Altitude","Lakes","Bikes"],"cost": "₹4,000/day"}
-        } %}
-        {% for dest in destinations %}
-        {% set meta = dest_meta.get(dest, {"emoji": "🌍", "tags": [], "cost": ""}) %}
-        <div class="dest-card" onclick="selectDestination('{{ dest }}')">
-          <div class="dest-emoji">{{ meta.emoji }}</div>
-          <h3>{{ dest }}</h3>
-          <p class="dest-cost">{{ meta.cost }}</p>
-          <div class="dest-tags">
-            {% for tag in meta.tags %}<span class="dest-tag">{{ tag }}</span>{% endfor %}
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-  </section>
+
 
   <footer class="site-footer">
     <p>🤖 Powered by a class-based Python multi-agent system &nbsp;·&nbsp; Built with Flask</p>
@@ -202,12 +171,7 @@
       });
     });
 
-    // ── Destination card click → select in dropdown ─────────────
-    function selectDestination(name) {
-      const sel = document.getElementById('destination');
-      sel.value = name;
-      document.getElementById('planner').scrollIntoView({ behavior: 'smooth' });
-    }
+
 
     // ── Submit button loading state ─────────────────────────────
     document.getElementById('tripForm').addEventListener('submit', () => {

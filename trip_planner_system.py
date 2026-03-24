@@ -1,67 +1,71 @@
 """
 trip_planner_system.py
 -----------------------
-Orchestrator for the multi-agent Trip Planner system.
-
-Supports two modes:
-  1. CLI mode  → python main.py  (UserAgent prompts for input)
-  2. Web mode  → called by Flask with data dict (skips UserAgent prompts)
+Orchestrator for the multi-agent Trip Planner system using the CrewAI framework.
+Now uses Google Search (Serper) for completely dynamic, real-world data 
+supporting ANY city globally.
 """
 
 from __future__ import annotations
 
-import sys
-from typing import Any, Dict, List, NamedTuple
+import os
+import json
+import re
+from typing import Any, Dict, List
 
-from memory import SharedMemory
-from agents import (
-    UserAgent,
-    RecommendationAgent,
-    PlannerAgent,
-    BudgetAgent,
-)
-from tools import ItineraryTool
+# If CrewAI is not installed, it will raise ImportError.
+from crewai import Agent, Task, Crew, Process
 
+try:
+    from tools.searchapi_tool import searchapi_tool
+except ImportError:
+    import os
+    import requests
+    from crewai_tools import tool
 
-class StageResult(NamedTuple):
-    agent_name: str
-    success: bool
-    message: str
+    @tool("SearchApi Travel Explorer")
+    def searchapi_tool(query: str) -> str:
+        """Search the web using SearchApi.io for travel information, flights, costs, and attractions."""
+        api_key = os.getenv("SEARCHAPI_API_KEY", "NgNQCzCKrNvRCJe7AcMz29gS")
+        params = {"engine": "google", "q": query, "api_key": api_key}
+        try:
+            response = requests.get("https://www.searchapi.io/api/v1/search", params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            results = data.get("organic_results", [])
+            snippets = [
+                f"Title: {r.get('title', '')}\nSnippet: {r.get('snippet', r.get('description', ''))}"
+                for r in results[:5]
+            ]
+            return "\n".join(snippets) if snippets else "No results found."
+        except Exception as e:
+            return f"Error executing search: {str(e)}"
 
+# ------------------------------------------------------------------
+# LLM & Tools Setup
+# ------------------------------------------------------------------
+
+# CrewAI >= v0.28 uses LiteLLM internally.
+# The llm parameter on Agent must be a plain string in LiteLLM format.
+if "GEMINI_API_KEY" not in os.environ and "GOOGLE_API_KEY" in os.environ:
+    os.environ["GEMINI_API_KEY"] = os.environ["GOOGLE_API_KEY"]
+
+LLM_MODEL = "gemini/gemini-2.5-flash"
+
+# Initialize Search Tool
+search_tool = searchapi_tool
+
+# ------------------------------------------------------------------
+# Orchestrator
+# ------------------------------------------------------------------
 
 class TripPlannerSystem:
     """
-    Orchestrates the full trip-planning multi-agent pipeline.
-
-    Usage — CLI
-    -----------
-    >>> system = TripPlannerSystem()
-    >>> system.run()
-
-    Usage — Web / programmatic
-    --------------------------
-    >>> system = TripPlannerSystem()
-    >>> result = system.run_with_data(
-    ...     destination="Goa", budget=12000, days=3,
-    ...     preferences=["beach", "fort"]
-    ... )
+    Orchestrates the full trip-planning multi-agent pipeline using CrewAI.
     """
 
-    _BANNER_WIDTH = 62
-    _SEPARATOR    = "─" * 62
-
     def __init__(self) -> None:
-        self._memory   = SharedMemory()
-        self._fmt_tool = ItineraryTool()
-
-        self._user_agent   = UserAgent()
-        self._rec_agent    = RecommendationAgent()
-        self._plan_agent   = PlannerAgent()
-        self._budget_agent = BudgetAgent()
-
-    # ------------------------------------------------------------------
-    # Web / programmatic entry point
-    # ------------------------------------------------------------------
+        pass
 
     def run_with_data(
         self,
@@ -71,157 +75,171 @@ class TripPlannerSystem:
         preferences: List[str],
     ) -> Dict[str, Any]:
         """
-        Run the full pipeline without interactive input.
-
-        Called by the Flask route handler.  Returns a structured result
-        dict that the template can render directly.
-
-        Parameters
-        ----------
-        destination : str
-        budget      : int  (INR)
-        days        : int
-        preferences : list[str]
-
-        Returns
-        -------
-        dict with keys: success, error, destination, budget, days,
-        preferences, places, itinerary, total_cost, avg_cost_per_day,
-        budget_status, surplus, surplus_label
+        Run the full pipeline without interactive input using Crew components.
         """
-        # Reset shared memory for each fresh request
-        self._memory.reset()
+        
+        # 1. Recommendation Agent
+        recommendation_agent = Agent(
+            role="Local Travel Expert",
+            goal=f"Identify 2-4 top attractions per day for a {days}-day trip to {destination} based on preferences.",
+            backstory=(
+                "You are a seasoned global travel guide. You use web search to find the "
+                "You find the best tourist spots matching traveler preferences concisely and efficiently."
+            ),
+            tools=[search_tool],
+            llm=LLM_MODEL,
+            verbose=False,
+            max_retry_limit=3
+        )
 
-        # Pre-populate shared memory (bypasses UserAgent interactive mode)
-        self._memory.set("destination", destination.title().strip())
-        self._memory.set("budget", budget)
-        self._memory.set("days", days)
-        self._memory.set("preferences", [p.strip().lower() for p in preferences if p.strip()])
+        # 2. Flight & Accommodation Agent
+        flight_agent = Agent(
+            role="Travel Cost Specialist",
+            goal=(
+                f"Find real-time flight estimates (round-trip from India) and average daily living costs in INR for {destination}."
+            ),
+            backstory=(
+                "You are a travel finance specialist who uses web searches to find the best flight routes "
+                "You find best flight routes and daily expenses (hotel+food). You provide quick estimates in INR."
+            ),
+            tools=[search_tool],
+            llm=LLM_MODEL,
+            verbose=False,
+            max_retry_limit=3
+        )
 
-        # Run the remaining three agents
-        pipeline = [
-            (self._rec_agent,    "Fetching recommendations…"),
-            (self._plan_agent,   "Building itinerary…"),
-            (self._budget_agent, "Calculating budget…"),
-        ]
+        # 3. Planner Agent
+        planner_agent = Agent(
+            role="Itinerary Coordinator",
+            goal=f"Create a logically ordered, day-by-day itinerary for a {days}-day trip to {destination}.",
+            backstory=(
+                "You are a meticulous trip planner. You take lists of places and distribute "
+                "them evenly across the available days to create a relaxing and enjoyable itinerary."
+            ),
+            llm=LLM_MODEL,
+            verbose=False,
+            max_retry_limit=3
+        )
 
-        for agent, _ in pipeline:
-            ok = agent.run()
-            if not ok:
-                errors = self._memory.get("errors", [])
-                return {
-                    "success": False,
-                    "error": "; ".join(errors) if errors else f"{agent.name} failed.",
-                }
+        # 4. Budget Agent
+        budget_agent = Agent(
+            role="Financial Advisor",
+            goal="Calculate total costs based on daily expenses and flights, and evaluate if it fits the user's budget.",
+            backstory=(
+                "You are an expert at travel budgeting. You calculate expected daily costs, "
+                "add flight estimates, and determine if the trip is financially feasible."
+            ),
+            llm=LLM_MODEL,
+            verbose=False,
+            max_retry_limit=3
+        )
 
-        return self._build_result_dict()
+        # ── Tasks ──────────────────────────────────────────────────────────────
 
-    # ------------------------------------------------------------------
-    # CLI entry point
-    # ------------------------------------------------------------------
+        task1 = Task(
+            description=(
+                f"Search the web for the best places to visit in {destination}. "
+                f"The user prefers: {', '.join(preferences) if preferences else 'general popular attractions'}. "
+                f"Find enough places to fill a {days}-day trip (about 2-4 places per day). "
+                "Return a clean, curated list of actual place names and a very brief description for each."
+            ),
+            expected_output="A list of strictly selected places to visit matching preferences.",
+            agent=recommendation_agent
+        )
+
+        task2 = Task(
+            description=(
+                f"Search costs to {destination}. Find TWO things in INR: "
+                f"1. Est. round-trip flight from major Indian city. "
+                f"2. Est. daily living cost (hotel, food, transport). "
+                "Summarize in one short paragraph with explicit INR numbers."
+            ),
+            expected_output="Short paragraph with flight cost and daily cost in INR.",
+            agent=flight_agent
+        )
+
+        task3 = Task(
+            description=(
+                f"Create a day-by-day itinerary for a {days}-day trip to {destination}. "
+                "Use the specific places selected by the Local Travel Expert from the first task. "
+                "Group the places logically into days (e.g., 'Day 1', 'Day 2')."
+            ),
+            expected_output=f"A day-wise itinerary for {days} days. Clear division of places per day.",
+            agent=planner_agent
+        )
+
+        task4 = Task(
+            description=(
+                f"Calculate the total trip cost to {destination} for {days} days. "
+                f"Budget: ₹{budget}. Preferences: {preferences}. "
+                "Extract daily cost INR and flight cost INR from Task 2. "
+                "Total = flight + (daily * days). Surplus = budget - total. "
+                "Return raw JSON format ONLY (NO markdown fences). Keys required: "
+                "\"destination\", \"budget\", \"days\", \"preferences\", "
+                "\"places\", \"itinerary\" (list of {'label': 'Day 1', 'places': [...]}), "
+                "\"total_cost\", \"avg_cost_per_day\", \"budget_status\" ('Within Budget'/'Exceeded Budget'), "
+                "\"budget_tip\", \"surplus\", \"surplus_label\", \"flight_details\"."
+            ),
+            expected_output="Valid JSON string matching the required schema.",
+            agent=budget_agent
+        )
+
+        crew = Crew(
+            agents=[recommendation_agent, flight_agent, planner_agent, budget_agent],
+            tasks=[task1, task2, task3, task4],
+            process=Process.sequential,
+            verbose=False,
+            max_rpm=10  # Reduced to avoid strict rate limits on free Gemini tier
+        )
+
+        # ── Kickoff ────────────────────────────────────────────────────────────
+        raw_json = "None"
+        try:
+            result_output = crew.kickoff()
+            raw_json = str(result_output)
+
+            # Strip markdown fences if the LLM wrapped the JSON anyway
+            raw_json = re.sub(r'```(?:json)?\s*', '', raw_json)
+            raw_json = re.sub(r'```\s*$', '', raw_json).strip()
+
+            # Find the outermost JSON object
+            match = re.search(r'\{.*\}', raw_json, re.DOTALL)
+            if match:
+                clean_json = match.group(0)
+            else:
+                clean_json = raw_json
+
+            output_dict = json.loads(clean_json)
+            output_dict["success"] = True
+
+            # Fallback: build surplus_label if missing
+            if "surplus_label" not in output_dict:
+                surp = output_dict.get("surplus", 0)
+                output_dict["surplus_label"] = (
+                    f"₹{abs(surp):,} {'remaining' if surp >= 0 else 'over budget'}"
+                )
+
+            # Normalise destination to title-case
+            output_dict["destination"] = str(
+                output_dict.get("destination", destination)
+            ).title()
+
+            return output_dict
+
+        except Exception as e:
+            err_msg = str(e)
+            if "429" in err_msg or "Quota exceeded" in err_msg:
+                clean_error = "AI API Quota Exceeded. Please ensure your API key has active billing or available free-tier limits."
+            elif "404" in err_msg:
+                clean_error = f"The selected AI model ({LLM_MODEL}) is not available on your account."
+            else:
+                clean_error = "Trip planning encountered a temporary error. Please try again."
+
+            return {
+                "success": False,
+                "error": clean_error
+            }
 
     def run(self) -> None:
         """Run in interactive CLI mode."""
-        self._print_header()
-        self._memory.reset()
-        self._execute_pipeline_cli()
-
-        if self._memory.has_errors():
-            self._print_errors()
-            return
-
-        self._render_cli_output()
-
-    # ------------------------------------------------------------------
-    # CLI helpers
-    # ------------------------------------------------------------------
-
-    def _execute_pipeline_cli(self) -> None:
-        pipeline = [
-            (self._user_agent,   "Collecting user preferences…"),
-            (self._rec_agent,    "Fetching place recommendations…"),
-            (self._plan_agent,   "Building day-wise itinerary…"),
-            (self._budget_agent, "Calculating budget and costs…"),
-        ]
-        for agent, description in pipeline:
-            print(f"\n  ⚙  {description}")
-            success = agent.run()
-            if not success:
-                print(f"\n  ❌  {agent.name} failed. Halting pipeline.")
-                break
-            print(f"  ✅  {agent.name} completed.")
-
-    def _render_cli_output(self) -> None:
-        r = self._build_result_dict()
-        sep = self._SEPARATOR
-        print(f"\n  {'=' * self._BANNER_WIDTH}")
-        print(f"  {'🧳  TRIP PLAN SUMMARY':^{self._BANNER_WIDTH}}")
-        print(f"  {'=' * self._BANNER_WIDTH}")
-        print(f"\n  {'📍 Destination':<22}: {r['destination']}")
-        print(f"  {'🗓  Duration':<22}: {r['days']} day(s)")
-        print(f"  {'💰 Your Budget':<22}: ₹{r['budget']:,}")
-        prefs = ", ".join(r["preferences"]) if r["preferences"] else "None"
-        print(f"  {'🎯 Preferences':<22}: {prefs}")
-        print(f"\n  {sep}")
-        print(f"  🗺  RECOMMENDED PLACES ({len(r['places'])} total)")
-        print(f"  {sep}")
-        for i, p in enumerate(r["places"], 1):
-            print(f"    {i:>2}. {p}")
-        print(f"\n  {sep}")
-        print(f"  📅  DAY-WISE ITINERARY")
-        print(f"  {sep}")
-        for entry in r["itinerary"]:
-            arrow = "  →  ".join(entry["places"])
-            print(f"    {entry['label']:>6}: {arrow}")
-        print(f"\n  {sep}")
-        print(f"  💳  BUDGET SUMMARY")
-        print(f"  {sep}")
-        print(f"  {'Avg Cost / Day':<22}: ₹{r['avg_cost_per_day']:,}")
-        print(f"  {'Estimated Cost':<22}: ₹{r['total_cost']:,}")
-        print(f"  {'Your Budget':<22}: ₹{r['budget']:,}")
-        icon = "✅" if r["budget_status"] == "Within Budget" else "⚠️ "
-        print(f"\n  {icon}  {r['budget_status']}")
-        print(f"\n  {'=' * self._BANNER_WIDTH}\n")
-
-    def _print_header(self) -> None:
-        print(f"\n  {'=' * self._BANNER_WIDTH}")
-        print(f"  {'🌐  MULTI-AGENT TRIP PLANNER':^{self._BANNER_WIDTH}}")
-        print(f"  {'=' * self._BANNER_WIDTH}\n")
-
-    def _print_errors(self) -> None:
-        errors = self._memory.get("errors", [])
-        print(f"\n  {'─' * self._BANNER_WIDTH}")
-        print(f"  ❌  ERRORS")
-        for err in errors:
-            print(f"    • {err}")
-        print()
-
-    # ------------------------------------------------------------------
-    # Shared result builder
-    # ------------------------------------------------------------------
-
-    def _build_result_dict(self) -> Dict[str, Any]:
-        """Convert current shared memory into a clean result dict."""
-        mem = self._memory
-        budget     = mem.get("budget", 0)
-        total_cost = mem.get("total_cost", 0)
-        surplus    = budget - total_cost
-        surplus_label = (
-            f"₹{abs(surplus):,} {'remaining' if surplus >= 0 else 'over budget'}"
-        )
-
-        return {
-            "success":          True,
-            "destination":      mem.get("destination", ""),
-            "budget":           budget,
-            "days":             mem.get("days", 0),
-            "preferences":      mem.get("preferences", []),
-            "places":           mem.get("places", []),
-            "itinerary":        mem.get("itinerary", []),
-            "total_cost":       total_cost,
-            "avg_cost_per_day": mem.get("avg_cost_per_day", 0),
-            "budget_status":    mem.get("budget_status", ""),
-            "budget_tip":       mem.get("budget_tip", ""),
-            "surplus":          surplus,
-            "surplus_label":    surplus_label,
-        }
+        print("CLI Mode is currently under construction for CrewAI. Please run the web app.")

@@ -85,6 +85,16 @@
                 {% endfor %}
             </ul>
         </div>
+        
+        <!-- ── Flight Details ─────────────────────────────────────── -->
+        {% if trip.flight_details %}
+        <div class="card flight-card" style="grid-column: 1 / -1;">
+            <h2 class="card-title">✈️ Flight Information</h2>
+            <div style="background: rgba(108,99,255,0.05); padding: 15px; border-radius: 8px; font-size: 0.95rem; line-height: 1.6;">
+                {{ trip.flight_details | replace('\n', '<br>') | safe }}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- ── Itinerary ───────────────────────────────────────────── -->
         <div class="card itinerary-card">
