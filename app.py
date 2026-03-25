@@ -22,6 +22,13 @@ warnings.filterwarnings("ignore")
 # Ensure project root is importable
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Vercel SQLite fix for ChromaDB/CrewAI
+try:
+    import pysqlite3
+    sys.modules["sqlite3"] = pysqlite3
+except ImportError:
+    pass
+
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from dotenv import load_dotenv
 
