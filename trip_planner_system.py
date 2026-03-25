@@ -252,4 +252,54 @@ class TripPlannerSystem:
 
     def run(self) -> None:
         """Run in interactive CLI mode."""
-        print("CLI Mode is currently under construction for CrewAI. Please run the web app.")
+        print("\n" + "="*50)
+        print(" ✈️  MULTI-AGENT TRIP PLANNER (CLI MODE)")
+        print("="*50)
+        
+        try:
+            destination = input("\n📍 Where do you want to go? (e.g. Goa, Paris): ").strip()
+            if not destination:
+                print("Error: Destination is required.")
+                return
+
+            days_raw = input("🗓 For how many days? (e.g. 3): ").strip()
+            days = int(days_raw) if days_raw.isdigit() else 3
+
+            budget_raw = input("💰 Your total budget in INR? (e.g. 50000): ").strip()
+            budget = int(budget_raw) if budget_raw.isdigit() else 50000
+
+            prefs_raw = input("🎯 Any preferences? (e.g. beaches, history, nightlife): ").strip()
+            preferences = [p.strip() for p in prefs_raw.split(",") if p.strip()]
+
+            print("\n🚀 Starting the AI Agent Pipeline... (This may take 1-2 minutes)\n")
+            
+            result = self.run_with_data(
+                destination=destination,
+                budget=budget,
+                days=days,
+                preferences=preferences
+            )
+
+            if result.get("success"):
+                print("\n✅ Trip Plan Generated Successfully!")
+                print(f"\n--- {result['destination']} Trip ({result['days']} Days) ---")
+                print(f"💰 Total Estimated Cost: ₹{result['total_cost']:,}")
+                print(f"📊 Budget Status: {result['budget_status']}")
+                print(f"💡 Tip: {result.get('budget_tip', 'No tip available')}")
+                
+                print("\n🗺 Recommended Places:")
+                for i, place in enumerate(result.get("places", []), 1):
+                    print(f"  {i}. {place}")
+                
+                print("\n📅 Itinerary Preview:")
+                for day in result.get("itinerary", []):
+                    print(f"  {day['label']}: {', '.join(day['places'])}")
+                
+                print("\n" + "="*50)
+            else:
+                print(f"\n❌ Execution Failed: {result.get('error')}")
+
+        except KeyboardInterrupt:
+            print("\n\n  ⛔  Session interrupted. Goodbye!")
+        except Exception as e:
+            print(f"\n❌ Error during execution: {e}")
