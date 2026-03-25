@@ -1,7 +1,7 @@
 {
     "version": 2,
     "functions": {
-        "app.py": {
+        "api/index.py": {
             "maxDuration": 60,
             "memory": 1024
         }
@@ -9,7 +9,7 @@
     "rewrites": [
         {
             "source": "/(.*)",
-            "destination": "app.py"
+            "destination": "/api/index.py"
         }
     ]
 }
