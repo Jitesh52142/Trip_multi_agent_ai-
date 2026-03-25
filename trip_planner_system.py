@@ -55,6 +55,13 @@ LLM_MODEL = "gemini/gemini-2.5-flash"
 # Initialize Search Tool
 search_tool = searchapi_tool
 
+# Configure LiteLLM retries so 429s are automatically retried with backoff
+try:
+    import litellm
+    litellm.num_retries = 5
+except ImportError:
+    pass
+
 # ------------------------------------------------------------------
 # Orchestrator
 # ------------------------------------------------------------------
@@ -189,7 +196,7 @@ class TripPlannerSystem:
             tasks=[task1, task2, task3, task4],
             process=Process.sequential,
             verbose=False,
-            max_rpm=10  # Reduced to avoid strict rate limits on free Gemini tier
+            max_rpm=4  # ~4 req/min keeps us well under Gemini free-tier limit
         )
 
         # ── Kickoff ────────────────────────────────────────────────────────────
@@ -228,12 +235,15 @@ class TripPlannerSystem:
 
         except Exception as e:
             err_msg = str(e)
-            if "429" in err_msg or "Quota exceeded" in err_msg:
-                clean_error = "AI API Quota Exceeded. Please ensure your API key has active billing or available free-tier limits."
-            elif "404" in err_msg:
-                clean_error = f"The selected AI model ({LLM_MODEL}) is not available on your account."
+            if "429" in err_msg or "quota" in err_msg.lower() or "rate limit" in err_msg.lower():
+                clean_error = "AI API Rate Limit hit. Please wait a moment and try again."
+            elif "404" in err_msg or "not found" in err_msg.lower():
+                clean_error = f"Model not found: {LLM_MODEL}. Check your API key has access to this model."
+            elif "401" in err_msg or "api key" in err_msg.lower() or "authentication" in err_msg.lower():
+                clean_error = "Invalid or missing API key. Check your GOOGLE_API_KEY / GEMINI_API_KEY."
             else:
-                clean_error = "Trip planning encountered a temporary error. Please try again."
+                # Show the real error so it is visible during debugging
+                clean_error = f"Error: {err_msg}"
 
             return {
                 "success": False,
