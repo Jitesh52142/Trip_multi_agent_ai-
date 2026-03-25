@@ -10,7 +10,7 @@ def searchapi_tool(query: str) -> str:
     # The user requested google_travel_explore but it requires a specific `departure_id`.
     # To keep the agent functioning seamlessly with natural language queries,
     # we use the standard google search engine through SearchApi.io which returns comprehensive snippets.
-    api_key = os.getenv("SEARCHAPI_API_KEY", "NgNQCzCKrNvRCJe7AcMz29gS")
+    api_key = os.getenv("SEARCHAPI_API_KEY") or os.getenv("SERPER_API_KEY") or "NgNQCzCKrNvRCJe7AcMz29gS"
     params = {
         "engine": "google",
         "q": query,

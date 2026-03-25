@@ -26,7 +26,7 @@ except ImportError:
     @tool("SearchApi Travel Explorer")
     def searchapi_tool(query: str) -> str:
         """Search the web using SearchApi.io for travel information, flights, costs, and attractions."""
-        api_key = os.getenv("SEARCHAPI_API_KEY", "NgNQCzCKrNvRCJe7AcMz29gS")
+        api_key = os.getenv("SEARCHAPI_API_KEY") or os.getenv("SERPER_API_KEY") or "NgNQCzCKrNvRCJe7AcMz29gS"
         params = {"engine": "google", "q": query, "api_key": api_key}
         try:
             response = requests.get("https://www.searchapi.io/api/v1/search", params=params, timeout=10)
